@@ -19,7 +19,10 @@ target_link_libraries(arm64ecfex PRIVATE
   CommonWindowsRuntime
   ntdll_ex)
 
-if (REACTOS)
+if (REACTOS_SDK)
+  # The ReactOS SDK toolchain supplies the C++ runtime, the CRT and the import libraries.
+  target_link_options(arm64ecfex PRIVATE -static -nostdlib -nostartfiles)
+elseif (REACTOS)
   target_link_options(arm64ecfex PRIVATE -static -nostdlib -nostartfiles -lc++ -lc++abi -lunwind -lucrt -lmingwex)
 else()
   target_link_options(arm64ecfex PRIVATE -static -nostdlib -nostartfiles -nodefaultlibs -lc++ -lc++abi -lunwind)

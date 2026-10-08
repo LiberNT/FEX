@@ -4,6 +4,8 @@ function(build_implib name)
   if (REACTOS AND ARCHITECTURE_arm64ec)
     # ReactOS passes a generic llvm-dlltool rather than the arm64ec-w64-mingw32 wrapper.
     list(APPEND dlltool_machine_args -m arm64ec)
+  elseif (REACTOS AND ARCHITECTURE_arm64)
+    list(APPEND dlltool_machine_args -m arm64)
   endif()
 
   add_custom_target(${name_ex}lib ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/lib${name_ex}.a)
@@ -21,9 +23,14 @@ function(patch_library_wine target)
     COMMAND dd bs=32 count=1 seek=2 conv=notrunc if=${CMAKE_SOURCE_DIR}/Source/Windows/wine_builtin.bin of=$<TARGET_FILE:${target}>)
 endfunction()
 
-execute_process(COMMAND ${CMAKE_CXX_COMPILER} ${CMAKE_CXX_FLAGS} -print-libgcc-file-name
-  OUTPUT_VARIABLE LIBGCC_PATH
-  OUTPUT_STRIP_TRAILING_WHITESPACE)
+if (REACTOS_SDK)
+  # The ReactOS SDK toolchain links the matching compiler-rt builtins itself.
+  set(LIBGCC_PATH "")
+else()
+  execute_process(COMMAND ${CMAKE_CXX_COMPILER} ${CMAKE_CXX_FLAGS} -print-libgcc-file-name
+    OUTPUT_VARIABLE LIBGCC_PATH
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+endif()
 
 build_implib(ntdll)
 build_implib(wow64)
