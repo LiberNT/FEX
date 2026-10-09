@@ -28,6 +28,10 @@ struct FILE;
 #include <wine/debug.h>
 #include "../Priv.h"
 
+#ifndef W_OK
+#define W_OK 2
+#endif
+
 struct FILE {
   HANDLE Handle {INVALID_HANDLE_VALUE};
   int FileHandle {-1};
@@ -118,18 +122,11 @@ DWORD OriginToMoveMethod(int Origin) {
 }
 } // namespace
 
-// io.h File Operatons
-DLLEXPORT_FUNC(int, _wsopen, (const wchar_t* Filename, int OpenFlag, int ShareFlag, ...)) {
+namespace {
+int WSOpen(const wchar_t* Filename, int OpenFlag, int ShareFlag, int PermMode) {
   DWORD Attrs = 0;
-  if (OpenFlag & _O_CREAT) {
-    va_list VA;
-    int PermMode;
-    va_start(VA, ShareFlag);
-    PermMode = va_arg(VA, int);
-    va_end(VA);
-    if (!(PermMode & _S_IWRITE)) {
-      Attrs = FILE_ATTRIBUTE_READONLY;
-    }
+  if ((OpenFlag & _O_CREAT) && !(PermMode & _S_IWRITE)) {
+    Attrs = FILE_ATTRIBUTE_READONLY;
   }
   auto access = OpenFlagToAccess(OpenFlag);
   ULONG sharing = FILE_SHARE_READ;
@@ -162,60 +159,70 @@ DLLEXPORT_FUNC(int, _wsopen, (const wchar_t* Filename, int OpenFlag, int ShareFl
   return ErrnoReturn(ENOENT);
 }
 
-DLLEXPORT_FUNC(int, _wopen, (const wchar_t* Filename, int OpenFlag, ...)) {
-  if (OpenFlag & _O_CREAT) {
-    va_list VA;
-    int PermMode;
-    va_start(VA, OpenFlag);
-    PermMode = va_arg(VA, int);
-    va_end(VA);
-    return _wsopen(Filename, OpenFlag, _SH_DENYNO, PermMode);
-  }
-  return _wsopen(Filename, OpenFlag, _SH_DENYNO);
-}
-
-DLLEXPORT_FUNC(int, _sopen, (const char* Filename, int OpenFlag, int ShareFlag, ...)) {
+int SOpen(const char* Filename, int OpenFlag, int ShareFlag, int PermMode) {
   UNICODE_STRING FilenameW;
   if (!RtlCreateUnicodeStringFromAsciiz(&FilenameW, Filename)) {
     return ErrnoReturn(EINVAL);
   }
-  int ret = 0;
-  if (OpenFlag & _O_CREAT) {
-    va_list VA;
-    int PermMode;
-    va_start(VA, ShareFlag);
-    PermMode = va_arg(VA, int);
-    va_end(VA);
-    ret = _wopen(FilenameW.Buffer, OpenFlag, ShareFlag, PermMode);
-  } else {
-    ret = _wopen(FilenameW.Buffer, OpenFlag, ShareFlag);
-  }
+  int ret = WSOpen(FilenameW.Buffer, OpenFlag, ShareFlag, PermMode);
   RtlFreeUnicodeString(&FilenameW);
   return ret;
 }
 
+int OpenPermMode(int OpenFlag, va_list VA) {
+  return (OpenFlag & _O_CREAT) ? va_arg(VA, int) : 0;
+}
+} // namespace
+
+// io.h File Operatons
+DLLEXPORT_FUNC(int, _wsopen, (const wchar_t* Filename, int OpenFlag, int ShareFlag, ...)) {
+  va_list VA;
+  va_start(VA, ShareFlag);
+  int PermMode = OpenPermMode(OpenFlag, VA);
+  va_end(VA);
+  return WSOpen(Filename, OpenFlag, ShareFlag, PermMode);
+}
+
+DLLEXPORT_FUNC(int, _wopen, (const wchar_t* Filename, int OpenFlag, ...)) {
+  va_list VA;
+  va_start(VA, OpenFlag);
+  int PermMode = OpenPermMode(OpenFlag, VA);
+  va_end(VA);
+  return WSOpen(Filename, OpenFlag, _SH_DENYNO, PermMode);
+}
+
+DLLEXPORT_FUNC(int, _sopen, (const char* Filename, int OpenFlag, int ShareFlag, ...)) {
+  va_list VA;
+  va_start(VA, ShareFlag);
+  int PermMode = OpenPermMode(OpenFlag, VA);
+  va_end(VA);
+  return SOpen(Filename, OpenFlag, ShareFlag, PermMode);
+}
+
 DLLEXPORT_FUNC(int, _open, (const char* Filename, int OpenFlag, ...)) {
-  if (OpenFlag & _O_CREAT) {
-    va_list VA;
-    int PermMode;
-    va_start(VA, OpenFlag);
-    PermMode = va_arg(VA, int);
-    va_end(VA);
-    return _sopen(Filename, OpenFlag, _SH_DENYNO, PermMode);
-  }
-  return _sopen(Filename, OpenFlag, _SH_DENYNO);
+  va_list VA;
+  va_start(VA, OpenFlag);
+  int PermMode = OpenPermMode(OpenFlag, VA);
+  va_end(VA);
+  return SOpen(Filename, OpenFlag, _SH_DENYNO, PermMode);
 }
 
 DLLEXPORT_FUNC(int, open, (const char* Filename, int OpenFlag, ...)) {
-  if (OpenFlag & _O_CREAT) {
-    va_list VA;
-    int PermMode;
-    va_start(VA, OpenFlag);
-    PermMode = va_arg(VA, int);
-    va_end(VA);
-    return _open(Filename, OpenFlag, PermMode);
-  }
-  return _open(Filename, OpenFlag);
+  va_list VA;
+  va_start(VA, OpenFlag);
+  int PermMode = OpenPermMode(OpenFlag, VA);
+  va_end(VA);
+  return SOpen(Filename, OpenFlag, _SH_DENYNO, PermMode);
+}
+
+DLLEXPORT_FUNC(errno_t, _wsopen_dispatch, (const wchar_t* Filename, int OpenFlag, int ShareFlag, int PermMode, int* FileHandle, int Secure)) {
+  *FileHandle = WSOpen(Filename, OpenFlag, ShareFlag, PermMode);
+  return *FileHandle == -1 ? errno : 0;
+}
+
+DLLEXPORT_FUNC(errno_t, _sopen_dispatch, (const char* Filename, int OpenFlag, int ShareFlag, int PermMode, int* FileHandle, int Secure)) {
+  *FileHandle = SOpen(Filename, OpenFlag, ShareFlag, PermMode);
+  return *FileHandle == -1 ? errno : 0;
 }
 
 DLLEXPORT_FUNC(int, _close, (int FileHandle)) {
@@ -223,11 +230,11 @@ DLLEXPORT_FUNC(int, _close, (int FileHandle)) {
   return 0;
 }
 
-int close(int FileHandle) {
+DLLEXPORT_FUNC(int, close, (int FileHandle)) {
   return _close(FileHandle);
 }
 
-int64_t _lseeki64(int FileHandle, int64_t Offset, int Origin) {
+DLLEXPORT_FUNC(int64_t, _lseeki64, (int FileHandle, int64_t Offset, int Origin)) {
   LARGE_INTEGER Res;
   SetFilePointerEx(GetFile(FileHandle)->Handle, LARGE_INTEGER {.QuadPart = Offset}, &Res, OriginToMoveMethod(Origin));
   return Res.QuadPart;
@@ -239,11 +246,11 @@ DLLEXPORT_FUNC(long, _lseek, (int FileHandle, long Offset, int Origin)) {
   return Res.QuadPart;
 }
 
-long lseek(int FileHandle, long Offset, int Origin) {
+DLLEXPORT_FUNC(long, lseek, (int FileHandle, long Offset, int Origin)) {
   return _lseek(FileHandle, Offset, Origin);
 }
 
-int64_t _telli64(int FileHandle) {
+DLLEXPORT_FUNC(int64_t, _telli64, (int FileHandle)) {
   LARGE_INTEGER Res;
   SetFilePointerEx(GetFile(FileHandle)->Handle, LARGE_INTEGER {}, &Res, FILE_CURRENT);
   return Res.QuadPart;
@@ -255,7 +262,7 @@ DLLEXPORT_FUNC(int, _read, (int FileHandle, void* DstBuf, unsigned int MaxCharCo
   return static_cast<int>(Read);
 }
 
-int read(int FileHandle, void* DstBuf, unsigned int MaxCharCount) {
+DLLEXPORT_FUNC(int, read, (int FileHandle, void* DstBuf, unsigned int MaxCharCount)) {
   return _read(FileHandle, DstBuf, MaxCharCount);
 }
 
@@ -269,7 +276,7 @@ DLLEXPORT_FUNC(int, _write, (int FileHandle, const void* Buf, unsigned int MaxCh
   return static_cast<int>(Written);
 }
 
-int write(int FileHandle, const void* Buf, unsigned int MaxCharCount) {
+DLLEXPORT_FUNC(int, write, (int FileHandle, const void* Buf, unsigned int MaxCharCount)) {
   return _write(FileHandle, Buf, MaxCharCount);
 }
 
@@ -281,7 +288,7 @@ DLLEXPORT_FUNC(int, ftruncate, (int FileHandle, off_t Length)) {
   return 0;
 }
 
-int _chsize(int FileHandle, long Length) {
+DLLEXPORT_FUNC(int, _chsize, (int FileHandle, long Length)) {
   return ftruncate(FileHandle, Length);
 }
 
@@ -318,57 +325,57 @@ int ModeToOpenFlag(TStr Mode) {
 // stdio.h File Operations
 DLLEXPORT_FUNC(FILE*, _wfopen, (const wchar_t* __restrict__ Filename, const wchar_t* __restrict__ Mode)) {
   int OpenFlag = ModeToOpenFlag<const wchar_t*, wchar_t, &wcschr>(Mode);
-  int Ret = _wopen(Filename, OpenFlag, _S_IWRITE | _S_IREAD);
+  int Ret = WSOpen(Filename, OpenFlag, _SH_DENYNO, _S_IWRITE | _S_IREAD);
   if (Ret == -1) {
     return nullptr;
   }
   return GetFile(Ret);
 }
 
-FILE* fopen(const char* __restrict__ Filename, const char* __restrict__ Mode) {
+DLLEXPORT_FUNC(FILE*, fopen, (const char* __restrict__ Filename, const char* __restrict__ Mode)) {
   int OpenFlag = ModeToOpenFlag<const char*, int, &strchr>(Mode);
-  int Ret = _open(Filename, OpenFlag, _S_IWRITE | _S_IREAD);
+  int Ret = SOpen(Filename, OpenFlag, _SH_DENYNO, _S_IWRITE | _S_IREAD);
   if (Ret == -1) {
     return nullptr;
   }
   return GetFile(Ret);
 }
 
-FILE* fdopen(int _FileHandle, const char* _Mode) {
+DLLEXPORT_FUNC(FILE*, fdopen, (int _FileHandle, const char* _Mode)) {
   UNIMPLEMENTED();
 }
 
-int fclose(FILE* File) {
+DLLEXPORT_FUNC(int, fclose, (FILE* File)) {
   RemoveFile(File->FileHandle);
   return 0;
 }
 
-DLLEXPORT_FUNC(int, _fseeki64, (FILE * File, _off64_t Offset, int Origin)) {
+DLLEXPORT_FUNC(int, _fseeki64, (FILE * File, __int64 Offset, int Origin)) {
   SetFilePointerEx(File->Handle, LARGE_INTEGER {.QuadPart = Offset}, nullptr, OriginToMoveMethod(Origin));
   return 0;
 }
 
-int fseek(FILE* File, long Offset, int Origin) {
+DLLEXPORT_FUNC(int, fseek, (FILE* File, long Offset, int Origin)) {
   return _fseeki64(File, Offset, Origin);
 }
 
-DLLEXPORT_FUNC(_off64_t, _ftelli64, (FILE * File)) {
+DLLEXPORT_FUNC(__int64, _ftelli64, (FILE * File)) {
   LARGE_INTEGER Res;
   SetFilePointerEx(File->Handle, LARGE_INTEGER {}, &Res, FILE_CURRENT);
   return Res.QuadPart;
 }
 
-long ftell(FILE* File) {
+DLLEXPORT_FUNC(long, ftell, (FILE* File)) {
   return static_cast<long>(_ftelli64(File));
 }
 
-size_t fread(void* __restrict__ DstBuf, size_t ElementSize, size_t Count, FILE* __restrict__ File) {
+DLLEXPORT_FUNC(size_t, fread, (void* __restrict__ DstBuf, size_t ElementSize, size_t Count, FILE* __restrict__ File)) {
   DWORD Read;
   ReadFile(File->Handle, DstBuf, ElementSize * Count, &Read, nullptr);
   return static_cast<size_t>(Read);
 }
 
-size_t fwrite(const void* __restrict__ Str, size_t Size, size_t Count, FILE* __restrict__ File) {
+DLLEXPORT_FUNC(size_t, fwrite, (const void* __restrict__ Str, size_t Size, size_t Count, FILE* __restrict__ File)) {
   DWORD Written;
   if (File->Append) {
     SetFilePointerEx(File->Handle, LARGE_INTEGER {}, nullptr, FILE_END);
@@ -377,55 +384,55 @@ size_t fwrite(const void* __restrict__ Str, size_t Size, size_t Count, FILE* __r
   return static_cast<size_t>(Written);
 }
 
-void setbuf(FILE* __restrict__ _File, char* __restrict__ _Buffer) {
+DLLEXPORT_FUNC(void, setbuf, (FILE* __restrict__ _File, char* __restrict__ _Buffer)) {
   UNIMPLEMENTED();
 }
 
-int fflush(FILE* _File) {
+DLLEXPORT_FUNC(int, fflush, (FILE* _File)) {
   UNIMPLEMENTED();
 }
 
-int fprintf(FILE* __restrict__, const char* __restrict__, ...) {
+DLLEXPORT_FUNC(int, fprintf, (FILE* __restrict__, const char* __restrict__, ...)) {
   UNIMPLEMENTED();
 }
 
-int vfprintf(FILE* __restrict__, const char* __restrict__, va_list) {
+DLLEXPORT_FUNC(int, vfprintf, (FILE* __restrict__, const char* __restrict__, va_list)) {
   UNIMPLEMENTED();
 }
 
-int ungetc(int _Ch, FILE* _File) {
+DLLEXPORT_FUNC(int, ungetc, (int _Ch, FILE* _File)) {
   UNIMPLEMENTED();
 }
 
-wint_t fgetwc(FILE* _File) {
+DLLEXPORT_FUNC(wint_t, fgetwc, (FILE* _File)) {
   UNIMPLEMENTED();
 }
 
-wint_t fputwc(wchar_t _Ch, FILE* _File) {
+DLLEXPORT_FUNC(wint_t, fputwc, (wchar_t _Ch, FILE* _File)) {
   UNIMPLEMENTED();
 }
 
-int fputc(int _Ch, FILE* _File) {
+DLLEXPORT_FUNC(int, fputc, (int _Ch, FILE* _File)) {
   UNIMPLEMENTED();
 }
 
-int fputs(const char* __restrict__ _Str, FILE* __restrict__ _File) {
+DLLEXPORT_FUNC(int, fputs, (const char* __restrict__ _Str, FILE* __restrict__ _File)) {
   UNIMPLEMENTED();
 }
 
-int getc(FILE* _File) {
+DLLEXPORT_FUNC(int, getc, (FILE* _File)) {
   UNIMPLEMENTED();
 }
 
-void _lock_file(FILE* _File) {
+DLLEXPORT_FUNC(void, _lock_file, (FILE* _File)) {
   UNIMPLEMENTED();
 }
 
-wint_t ungetwc(wint_t _Ch, FILE* _File) {
+DLLEXPORT_FUNC(wint_t, ungetwc, (wint_t _Ch, FILE* _File)) {
   UNIMPLEMENTED();
 }
 
-void _unlock_file(FILE* _File) {
+DLLEXPORT_FUNC(void, _unlock_file, (FILE* _File)) {
   UNIMPLEMENTED();
 }
 
@@ -437,7 +444,7 @@ DLLEXPORT_FUNC(int, _fileno, (FILE * _File)) {
   UNIMPLEMENTED();
 }
 
-int access(const char* Path, int AccessMode) {
+DLLEXPORT_FUNC(int, access, (const char* Path, int AccessMode)) {
   UNICODE_STRING PathW;
   if (!RtlCreateUnicodeStringFromAsciiz(&PathW, Path)) {
     return ErrnoReturn(EINVAL);
@@ -468,14 +475,14 @@ int access(const char* Path, int AccessMode) {
   return 0;
 }
 
-int rename(const char* _OldFilename, const char* _NewFilename) {
+DLLEXPORT_FUNC(int, rename, (const char* _OldFilename, const char* _NewFilename)) {
   UNIMPLEMENTED();
 }
 
-int printf(const char* Format, ...) {
+DLLEXPORT_FUNC(int, printf, (const char* Format, ...)) {
   UNIMPLEMENTED();
 }
 
-int puts(const char* Str) {
+DLLEXPORT_FUNC(int, puts, (const char* Str)) {
   UNIMPLEMENTED();
 }

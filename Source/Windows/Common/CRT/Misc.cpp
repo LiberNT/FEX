@@ -18,7 +18,7 @@ char** EnvArray;
 namespace {
 void InitEnv() {
   RtlAcquirePebLock();
-  auto ProcessParams = reinterpret_cast<RTL_USER_PROCESS_PARAMETERS64*>(NtCurrentTeb()->ProcessEnvironmentBlock->ProcessParameters);
+  auto ProcessParams = reinterpret_cast<__TEB*>(NtCurrentTeb())->Peb->ProcessParameters;
   wchar_t* EnvW = reinterpret_cast<wchar_t*>(ProcessParams->Environment);
   DWORD SizeW = 4;
   // The PEB environment is terminated by two null wchars.
@@ -56,7 +56,7 @@ DLLEXPORT_FUNC(char***, __p__environ, ()) {
   return &EnvArray;
 }
 
-char* getenv(const char* VarName) {
+DLLEXPORT_FUNC(char*, getenv, (const char* VarName)) {
   size_t VarNameLen = strlen(VarName);
   char* It = Env;
   char* Ret = nullptr;
@@ -75,24 +75,24 @@ char* getenv(const char* VarName) {
 }
 #endif
 
-int atexit(void (*)(void)) {
+DLLEXPORT_FUNC(int, atexit, (void (*)(void))) {
   return 0;
 }
 
 #ifndef __REACTOS__
 #pragma push_macro("abort")
 #undef abort
-void abort(void) {
+DLLEXPORT_FUNC(void, abort, (void)) {
   UNIMPLEMENTED();
 }
 #pragma pop_macro("abort")
 
-int getpid(void) {
+DLLEXPORT_FUNC(int, getpid, (void)) {
   return static_cast<int>(GetCurrentProcessId());
 }
 #endif
 
-void exit(int _Code) {
+DLLEXPORT_FUNC(void, exit, (int _Code)) {
   UNIMPLEMENTED();
 }
 

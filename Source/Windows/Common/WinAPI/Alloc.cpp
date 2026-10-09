@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cerrno>
+#include <malloc.h>
 #include <winternl.h>
 #include <windows.h>
 #include <processenv.h>
@@ -14,7 +15,7 @@
 
 #ifndef _M_ARM64EC
 namespace {
-SYSTEM_BASIC_INFORMATION BasicInfo;
+__SYSTEM_BASIC_INFORMATION BasicInfo;
 
 void InitBasicInfo() {
   NtQuerySystemInformation(SystemEmulationBasicInformation, &BasicInfo, sizeof(BasicInfo), nullptr);

@@ -13,18 +13,18 @@
 #include <processenv.h>
 #include "../Priv.h"
 
-WINBOOL WaitOnAddress(volatile void* Address, void* CompareAddress, SIZE_T AddressSize, DWORD dwMilliseconds) {
+DLLEXPORT_FUNC(WINBOOL, WaitOnAddress, (volatile void* Address, void* CompareAddress, SIZE_T AddressSize, DWORD dwMilliseconds)) {
   LARGE_INTEGER Time;
   // A negative value indicates a relative time measured in 100ns intervals.
   Time.QuadPart = static_cast<ULONGLONG>(dwMilliseconds) * -10000;
   return RtlWaitOnAddress(const_cast<void*>(Address), CompareAddress, AddressSize, dwMilliseconds == INFINITE ? nullptr : &Time) == STATUS_SUCCESS;
 }
 
-void WakeByAddressAll(PVOID Address) {
+DLLEXPORT_FUNC(void, WakeByAddressAll, (PVOID Address)) {
   RtlWakeAddressAll(Address);
 }
 
-void WINAPI WakeByAddressSingle(PVOID Address) {
+DLLEXPORT_FUNC(void, WakeByAddressSingle, (PVOID Address)) {
   RtlWakeAddressSingle(Address);
 }
 

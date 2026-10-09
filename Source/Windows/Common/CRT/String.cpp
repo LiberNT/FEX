@@ -28,15 +28,15 @@ DLLEXPORT_FUNC(char*, _strdup, (const char* Src)) {
   return Dst;
 }
 
-char* strdup(const char* Src) {
+DLLEXPORT_FUNC(char*, strdup, (const char* Src)) {
   return _strdup(Src);
 }
 
-float strtof(const char* __restrict__, char** __restrict__) {
+DLLEXPORT_FUNC(float, strtof, (const char* __restrict__, char** __restrict__)) {
   UNIMPLEMENTED();
 }
 
-double strtod(const char* __restrict__, char** __restrict__) {
+DLLEXPORT_FUNC(double, strtod, (const char* __restrict__, char** __restrict__)) {
   UNIMPLEMENTED();
 }
 
@@ -44,31 +44,31 @@ DLLEXPORT_FUNC(double, _strtod_l, (const char* __restrict__ _Str, char** __restr
   UNIMPLEMENTED();
 }
 
-long long wcstoll(const wchar_t* __restrict__ nptr, wchar_t** __restrict__ endptr, int base) {
+DLLEXPORT_FUNC(long long, wcstoll, (const wchar_t* __restrict__ nptr, wchar_t** __restrict__ endptr, int base)) {
   UNIMPLEMENTED();
 }
 
-unsigned long long wcstoull(const wchar_t* __restrict__ nptr, wchar_t** __restrict__ endptr, int base) {
+DLLEXPORT_FUNC(unsigned long long, wcstoull, (const wchar_t* __restrict__ nptr, wchar_t** __restrict__ endptr, int base)) {
   UNIMPLEMENTED();
 }
 
-long long atoll(const char*) {
+DLLEXPORT_FUNC(long long, atoll, (const char*)) {
   UNIMPLEMENTED();
 }
 
-long double strtold(const char* __restrict__, char** __restrict__) {
+DLLEXPORT_FUNC(long double, strtold, (const char* __restrict__, char** __restrict__)) {
   UNIMPLEMENTED();
 }
 
-double wcstod(const wchar_t* __restrict__ _Str, wchar_t** __restrict__ _EndPtr) {
+DLLEXPORT_FUNC(double, wcstod, (const wchar_t* __restrict__ _Str, wchar_t** __restrict__ _EndPtr)) {
   UNIMPLEMENTED();
 }
 
-long double wcstold(const wchar_t* __restrict__, wchar_t** __restrict__) {
+DLLEXPORT_FUNC(long double, wcstold, (const wchar_t* __restrict__, wchar_t** __restrict__)) {
   UNIMPLEMENTED();
 }
 
-float wcstof(const wchar_t* __restrict__ nptr, wchar_t** __restrict__ endptr) {
+DLLEXPORT_FUNC(float, wcstof, (const wchar_t* __restrict__ nptr, wchar_t** __restrict__ endptr)) {
   UNIMPLEMENTED();
 }
 
@@ -80,20 +80,20 @@ DLLEXPORT_FUNC(unsigned __int64, _strtoui64_l, (const char* _String, char** _End
   UNIMPLEMENTED();
 }
 
-int __stdio_common_vsscanf(unsigned __int64 options, const char* input, size_t length, const char* format, _locale_t locale, va_list valist) {
+DLLEXPORT_FUNC(int, __stdio_common_vsscanf, (unsigned __int64 options, const char* input, size_t length, const char* format, _locale_t locale, va_list valist)) {
   UNIMPLEMENTED();
 }
 
-int __stdio_common_vswprintf(unsigned __int64 options, wchar_t* str, size_t len, const wchar_t* format, _locale_t locale, va_list valist) {
+DLLEXPORT_FUNC(int, __stdio_common_vswprintf, (unsigned __int64 options, wchar_t* str, size_t len, const wchar_t* format, _locale_t locale, va_list valist)) {
   return _vsnwprintf(str, len, format, valist);
 }
 
-int __mingw_vsnwprintf(wchar_t* __restrict__ Dest, size_t Count, const wchar_t* __restrict__ Format, va_list Args) {
+DLLEXPORT_FUNC(int, __mingw_vsnwprintf, (wchar_t* __restrict__ Dest, size_t Count, const wchar_t* __restrict__ Format, va_list Args)) {
   int ret = _vsnwprintf(Dest, Count, Format, Args);
   return ret;
 }
 
-int __mingw_vsprintf(char* __restrict__ Dest, const char* __restrict__ Format, va_list Args) {
+DLLEXPORT_FUNC(int, __mingw_vsprintf, (char* __restrict__ Dest, const char* __restrict__ Format, va_list Args)) {
   int ret = vsprintf(Dest, Format, Args);
   return ret;
 }
@@ -103,7 +103,7 @@ DLLEXPORT_FUNC(size_t, _strftime_l,
   UNIMPLEMENTED();
 }
 
-int vsnprintf(char* __restrict__ Dest, size_t Count, const char* __restrict__ Format, va_list Args) {
+DLLEXPORT_FUNC(int, vsnprintf, (char* __restrict__ Dest, size_t Count, const char* __restrict__ Format, va_list Args)) {
   int ret = _vsnprintf(Dest, Count, Format, Args);
   if (ret == -1) {
     Dest[Count - 1] = '\0';
@@ -112,7 +112,7 @@ int vsnprintf(char* __restrict__ Dest, size_t Count, const char* __restrict__ Fo
   return ret;
 }
 
-int snprintf(char* stream, size_t n, const char* format, ...) {
+DLLEXPORT_FUNC(int, snprintf, (char* stream, size_t n, const char* format, ...)) {
   __builtin_va_list args;
   __builtin_va_start(args, format);
   int ret = vsnprintf(stream, n, format, args);

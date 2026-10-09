@@ -6,19 +6,19 @@
 #include "../Priv.h"
 #include <rpmalloc/rpmalloc.h>
 
-void* calloc(size_t NumOfElements, size_t SizeOfElements) {
+DLLEXPORT_FUNC(void*, calloc, (size_t NumOfElements, size_t SizeOfElements)) {
   return ::rpcalloc(NumOfElements, SizeOfElements);
 }
 
-void free(void* Memory) {
+DLLEXPORT_FUNC(void, free, (void* Memory)) {
   ::rpfree(Memory);
 }
 
-void* malloc(size_t Size) {
+DLLEXPORT_FUNC(void*, malloc, (size_t Size)) {
   return ::rpmalloc(Size);
 }
 
-void* realloc(void* Memory, size_t NewSize) {
+DLLEXPORT_FUNC(void*, realloc, (void* Memory, size_t NewSize)) {
   return ::rprealloc(Memory, NewSize);
 }
 

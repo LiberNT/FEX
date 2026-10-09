@@ -57,7 +57,7 @@ DLLEXPORT_FUNC(WINBOOL, QueryPerformanceFrequency, (LARGE_INTEGER * lpFrequency)
 }
 
 DLLEXPORT_FUNC(void, GetSystemInfo, (LPSYSTEM_INFO lpSystemInfo)) {
-  SYSTEM_BASIC_INFORMATION Info;
+  __SYSTEM_BASIC_INFORMATION Info;
 
   if (NtQuerySystemInformation(SystemBasicInformation, &Info, sizeof(Info), nullptr)) {
     return;

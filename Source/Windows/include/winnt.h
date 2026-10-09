@@ -9,6 +9,7 @@
 extern "C" {
 #endif
 
+#ifndef __REACTOS__
 typedef struct ___IMAGE_LOAD_CONFIG_CODE_INTEGRITY {
   WORD Flags;
   WORD Catalog;
@@ -119,6 +120,7 @@ typedef struct __IMAGE_LOAD_CONFIG_DIRECTORY32 {
   DWORD CastGuardOsDeterminedFailureMode;
   DWORD GuardMemcpyFunctionPointer;
 } _IMAGE_LOAD_CONFIG_DIRECTORY32, *_PIMAGE_LOAD_CONFIG_DIRECTORY32;
+#endif
 
 typedef struct _IMAGE_CHPE_RANGE_ENTRY {
   union {
@@ -174,6 +176,7 @@ typedef struct _IMAGE_ARM64EC_CODE_RANGE_ENTRY_POINT {
   ULONG EntryPoint;
 } IMAGE_ARM64EC_CODE_RANGE_ENTRY_POINT;
 
+#ifndef __REACTOS__
 typedef struct _CONTEXT_CHUNK {
   LONG Offset;
   ULONG Length;
@@ -187,6 +190,7 @@ typedef struct _CONTEXT_EX {
   ULONG64 align;
 #endif
 } CONTEXT_EX, *PCONTEXT_EX;
+#endif
 
 // From process hacker
 typedef struct _IMAGE_VOLATILE_METADATA {

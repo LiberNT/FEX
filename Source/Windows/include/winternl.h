@@ -3,7 +3,11 @@
 
 #pragma once
 
+#ifdef __REACTOS__
+#include <wine/winternl.h>
+#else
 #include_next <winternl.h>
+#endif
 #include <winnt.h>
 
 #ifdef __cplusplus
@@ -22,16 +26,21 @@ extern "C" {
 #define _SH_DENYRD SH_DENYRD
 #define _SH_DENYNO SH_DENYNO
 
+#ifndef __REACTOS__
 #define NtCurrentProcess() ((HANDLE) ~(ULONG_PTR)0)
 #define NtCurrentThread() ((HANDLE) ~(ULONG_PTR)1)
 
 #define WOW64_TLS_WOW64INFO 10
 #define WOW64_TLS_MAX_NUMBER 19
+#endif
 
+#ifndef __REACTOS__
 #define WOW64_CPUFLAGS_SOFTWARE 0x02
+#endif
 
 #define STATUS_EMULATION_SYSCALL ((NTSTATUS)0x40000039)
 
+#ifndef __REACTOS__
 #ifdef ARCHITECTURE_arm64ec
 typedef struct _CHPE_V2_CPU_AREA_INFO {
   BOOLEAN InSimulation;             /* 000 */
@@ -45,7 +54,9 @@ typedef struct _CHPE_V2_CPU_AREA_INFO {
   ULONG64 EmulatorDataInline;       /* 050 */
 } CHPE_V2_CPU_AREA_INFO, *PCHPE_V2_CPU_AREA_INFO;
 #endif
+#endif
 
+#ifndef __REACTOS__
 typedef struct {
   ULONG version;
   ULONG unknown1[3];
@@ -118,6 +129,7 @@ typedef struct tagRTL_BITMAP {
   ULONG SizeOfBitMap; /* Number of bits in the bitmap */
   PULONG Buffer;      /* Bitmap data, assumed sized to a DWORD boundary */
 } RTL_BITMAP, *PRTL_BITMAP;
+#endif
 
 typedef const RTL_BITMAP* PCRTL_BITMAP;
 
@@ -233,6 +245,7 @@ typedef struct __PEB {                    /* win32/win64 */
   ULONG NtGlobalFlag2;                          /* 478/7c4 */
 } __PEB, *__PPEB;
 
+#ifndef __REACTOS__
 typedef struct _RTL_ACTIVATION_CONTEXT_STACK_FRAME {
   struct _RTL_ACTIVATION_CONTEXT_STACK_FRAME* Previous;
   struct _ACTIVATION_CONTEXT* ActivationContext;
@@ -251,6 +264,7 @@ typedef struct _GDI_TEB_BATCH {
   HANDLE HDC;
   ULONG Buffer[0x136];
 } GDI_TEB_BATCH;
+#endif
 typedef struct __TEB {                          /* win32/win64 */
   NT_TIB Tib;                                   /* 000/0000 */
   PVOID EnvironmentPointer;                     /* 01c/0038 */
@@ -372,6 +386,7 @@ typedef struct __TEB {                          /* win32/win64 */
   GUID EffectiveContainerId;      /* ff0/1828 */
 } __TEB, *__PTEB;
 
+#ifndef __REACTOS__
 typedef struct _WOW64INFO {
   ULONG NativeSystemPageSize;
   ULONG CpuFlags;
@@ -441,7 +456,9 @@ typedef enum _SECTION_INHERIT {
 #define CPU_FEATURE_AVX2 0x80000000  /* AVX2 instructions */
 #define CPU_FEATURE_PAE 0x00200000
 #define CPU_FEATURE_DAZ 0x00400000
+#endif
 
+#ifndef __REACTOS__
 typedef enum _MEMORY_INFORMATION_CLASS {
   MemoryBasicInformation,
   MemoryWorkingSetInformation,
@@ -471,17 +488,24 @@ typedef enum _MEMORY_INFORMATION_CLASS {
 #endif
   MemoryFexStatsShm = 2000,
 } MEMORY_INFORMATION_CLASS;
+#else
+#define MemoryWineLoadUnixLibByName (MEMORY_INFORMATION_CLASS)1002
+#define MemoryFexStatsShm (MEMORY_INFORMATION_CLASS)2000
+#endif
 
 #define SystemEmulationBasicInformation (SYSTEM_INFORMATION_CLASS)62
 
+#ifndef __REACTOS__
 #define MEM_EXECUTE_OPTION_DISABLE 0x01
 #define MEM_EXECUTE_OPTION_ENABLE 0x02
 #define MEM_EXECUTE_OPTION_DISABLE_THUNK_EMULATION 0x04
 #define MEM_EXECUTE_OPTION_PERMANENT 0x08
+#endif
 
 #define ProcessFexHardwareTso (PROCESSINFOCLASS)2000
 #define ProcessFexUnalignAtomic (PROCESSINFOCLASS)2001
 
+#ifndef __REACTOS__
 typedef enum _KEY_VALUE_INFORMATION_CLASS {
   KeyValueBasicInformation,
   KeyValueFullInformation,
@@ -497,6 +521,21 @@ typedef struct _KEY_VALUE_PARTIAL_INFORMATION {
   ULONG DataLength;
   UCHAR Data[1];
 } KEY_VALUE_PARTIAL_INFORMATION, *PKEY_VALUE_PARTIAL_INFORMATION;
+#endif
+
+typedef struct __SYSTEM_BASIC_INFORMATION {
+  BYTE Reserved1[4];
+  ULONG MaximumIncrement;
+  ULONG PhysicalPageSize;
+  ULONG NumberOfPhysicalPages;
+  ULONG LowestPhysicalPage;
+  ULONG HighestPhysicalPage;
+  ULONG AllocationGranularity;
+  ULONG_PTR LowestUserAddress;
+  ULONG_PTR HighestUserAddress;
+  ULONG_PTR ActiveProcessors;
+  CCHAR NumberOfProcessors;
+} __SYSTEM_BASIC_INFORMATION;
 
 typedef struct _MEMORY_FEX_STATS_SHM_INFORMATION {
   void* shm_base;
@@ -504,16 +543,20 @@ typedef struct _MEMORY_FEX_STATS_SHM_INFORMATION {
   DWORD max_size;
 } MEMORY_FEX_STATS_SHM_INFORMATION, *PMEMORY_FEX_STATS_SHM_INFORMATION;
 
+#ifndef __REACTOS__
 typedef struct _MEMORY_SECTION_NAME {
   UNICODE_STRING SectionFileName;
 } MEMORY_SECTION_NAME, *PMEMORY_SECTION_NAME;
+#endif
 
 NTSTATUS WINAPIV DbgPrint(LPCSTR fmt, ...);
 NTSTATUS WINAPI LdrDisableThreadCalloutsForDll(HMODULE);
 NTSTATUS WINAPI LdrGetDllFullName(HMODULE, UNICODE_STRING*);
 NTSTATUS WINAPI LdrGetDllHandle(LPCWSTR, ULONG, const UNICODE_STRING*, HMODULE*);
 NTSTATUS WINAPI LdrGetProcedureAddress(HMODULE, const ANSI_STRING*, ULONG, void**);
+#ifndef __REACTOS__
 IMAGE_BASE_RELOCATION* WINAPI LdrProcessRelocationBlock(ULONG_PTR, ULONG, USHORT*, INT_PTR);
+#endif
 NTSTATUS WINAPI NtAllocateVirtualMemoryEx(HANDLE, PVOID*, SIZE_T*, ULONG, ULONG, MEM_EXTENDED_PARAMETER*, ULONG);
 NTSTATUS WINAPI NtAllocateVirtualMemory(HANDLE, PVOID*, ULONG_PTR, SIZE_T*, ULONG, ULONG);
 NTSTATUS WINAPI NtContinue(PCONTEXT, BOOLEAN);
