@@ -5,6 +5,7 @@
 #include <FEXCore/Utils/CompilerDefs.h>
 
 #include <span>
+#include <unistd.h>
 
 namespace FEXCore::FileLoading {
 /**

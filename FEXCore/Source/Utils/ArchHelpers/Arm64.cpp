@@ -12,6 +12,9 @@
 
 #include <atomic>
 #include <cstdint>
+#ifdef _WIN32
+#include <malloc.h>
+#endif
 
 namespace FEXCore::ArchHelpers::Arm64 {
 constexpr uint32_t CASPAL_MASK = 0xBF'E0'FC'00;

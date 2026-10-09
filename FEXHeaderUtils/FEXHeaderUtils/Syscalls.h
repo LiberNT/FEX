@@ -4,10 +4,10 @@
 #include <FEXCore/Utils/LogManager.h>
 
 #include <cstdint>
-#include <sched.h>
 #include <signal.h>
 #include <stdio.h>
 #ifndef _WIN32
+#include <sched.h>
 #include <syscall.h>
 #else
 #include <processthreadsapi.h>

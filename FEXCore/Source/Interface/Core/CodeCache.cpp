@@ -30,6 +30,9 @@
 #include <FEXCore/Utils/AllocatorHooks.h>
 
 #include <fstream>
+#ifdef _WIN32
+#include <malloc.h>
+#endif
 
 namespace FEXCore {
 

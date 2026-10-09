@@ -11,6 +11,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #undef ERROR
+#include <unistd.h>
 #endif
 
 namespace FEXCore::File {

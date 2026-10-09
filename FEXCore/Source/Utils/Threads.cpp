@@ -3,7 +3,9 @@
 #include <FEXCore/Utils/Threads.h>
 #include <FEXCore/fextl/memory.h>
 
+#ifndef _WIN32
 #include <pthread.h>
+#endif
 #include <unistd.h>
 
 namespace FEXCore::Threads {
