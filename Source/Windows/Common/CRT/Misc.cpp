@@ -51,7 +51,7 @@ void InitEnv() {
 __attribute__((used, section(".CRT$FEXB"))) void (*_InitEnv)(void) = InitEnv;
 } // namespace
 
-#ifndef __REACTOS__
+#if !defined(__REACTOS__) || defined(FEX_STANDALONE_CRT)
 DLLEXPORT_FUNC(char***, __p__environ, ()) {
   return &EnvArray;
 }
@@ -79,7 +79,7 @@ DLLEXPORT_FUNC(int, atexit, (void (*)(void))) {
   return 0;
 }
 
-#ifndef __REACTOS__
+#if !defined(__REACTOS__) || defined(FEX_STANDALONE_CRT)
 #pragma push_macro("abort")
 #undef abort
 DLLEXPORT_FUNC(void, abort, (void)) {
@@ -92,11 +92,21 @@ DLLEXPORT_FUNC(int, getpid, (void)) {
 }
 #endif
 
+#ifdef FEX_STANDALONE_CRT
+DLLEXPORT_FUNC(int, _getpid, (void)) {
+  return static_cast<int>(GetCurrentProcessId());
+}
+
+DLLEXPORT_FUNC(void, _wassert, (const wchar_t* message, const wchar_t* file, unsigned line)) {
+  UNIMPLEMENTED();
+}
+#endif
+
 DLLEXPORT_FUNC(void, exit, (int _Code)) {
   UNIMPLEMENTED();
 }
 
-#ifndef __REACTOS__
+#if !defined(__REACTOS__) || defined(FEX_STANDALONE_CRT)
 DLLEXPORT_FUNC(void, _assert, (const char* message, const char* file, unsigned line)) {
   UNIMPLEMENTED();
 }
@@ -108,7 +118,7 @@ DLLEXPORT_FUNC(
   UNIMPLEMENTED();
 }
 
-#ifndef __REACTOS__
+#if !defined(__REACTOS__) || defined(FEX_STANDALONE_CRT)
 DLLEXPORT_FUNC(int*, __sys_nerr, (void)) {
   UNIMPLEMENTED();
 }

@@ -112,6 +112,30 @@ DLLEXPORT_FUNC(int, vsnprintf, (char* __restrict__ Dest, size_t Count, const cha
   return ret;
 }
 
+#ifdef FEX_STANDALONE_CRT
+DLLEXPORT_FUNC(int, __stdio_common_vsprintf,
+               (unsigned __int64 Options, char* Buffer, size_t BufferCount, const char* Format, _locale_t Locale, va_list ArgList)) {
+  if (Options & _CRT_INTERNAL_PRINTF_STANDARD_SNPRINTF_BEHAVIOR) {
+    return vsnprintf(Buffer, BufferCount, Format, ArgList);
+  }
+  return _vsnprintf(Buffer, BufferCount, Format, ArgList);
+}
+
+DLLEXPORT_FUNC(int, __stdio_common_vfprintf, (unsigned __int64 Options, FILE* Stream, const char* Format, _locale_t Locale, va_list ArgList)) {
+  char Buffer[1024];
+  int Length = vsnprintf(Buffer, sizeof(Buffer), Format, ArgList);
+  if (Length < 0) {
+    return -1;
+  }
+  size_t Count = static_cast<size_t>(Length) < sizeof(Buffer) ? static_cast<size_t>(Length) : sizeof(Buffer) - 1;
+  return fwrite(Buffer, 1, Count, Stream) == Count ? Length : -1;
+}
+
+DLLEXPORT_FUNC(size_t, strftime, (char* __restrict__ Buf, size_t Max_size, const char* __restrict__ Format, const struct tm* __restrict__ Tm)) {
+  UNIMPLEMENTED();
+}
+#endif
+
 DLLEXPORT_FUNC(int, snprintf, (char* stream, size_t n, const char* format, ...)) {
   __builtin_va_list args;
   __builtin_va_start(args, format);
