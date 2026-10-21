@@ -373,6 +373,7 @@ struct JITPointers {
   uint64_t GuestSignal_SIGILL {};
   uint64_t GuestSignal_SIGTRAP {};
   uint64_t GuestSignal_SIGSEGV {};
+  uint64_t GuestExceptionThunk {};
   uint64_t SignalReturnHandler {};
   uint64_t SignalReturnHandlerRT {};
   uint64_t L2Pointer {};

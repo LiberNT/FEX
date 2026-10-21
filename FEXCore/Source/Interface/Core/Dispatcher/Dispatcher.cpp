@@ -390,6 +390,19 @@ void Dispatcher::EmitDispatcher() {
     hlt(0);
   }
 
+  const bool HasGuestExceptionThunk = CTX->SyscallHandler->GetGuestExceptionThunk() != 0;
+  auto EmitGuestExceptionThunkCall = [&]() {
+    mov(ARMEmitter::XReg::x0, STATE);
+    ldr(ARMEmitter::XReg::x1, STATE_PTR(CpuStateFrame, Pointers.GuestExceptionThunk));
+    if (!CTX->Config.DisableVixlIndirectCalls) [[unlikely]] {
+      GenerateIndirectRuntimeCall<void, void*>(ARMEmitter::Reg::r1);
+    } else {
+      blr(ARMEmitter::Reg::r1);
+    }
+    LoadConstant(ARMEmitter::Size::i64Bit, ENTRY_FILL_SRA_SINGLE_INST_REG, 0);
+    LoadConstant(ARMEmitter::Size::i64Bit, TMP1, AbsoluteLoopTopAddressFillSRA);
+    br(TMP1);
+  };
   {
     // Guest SIGILL handler
     // Needs to be distinct from the SignalHandlerReturnAddress
@@ -397,7 +410,11 @@ void Dispatcher::EmitDispatcher() {
 
     SpillStaticRegs(TMP1);
 
-    hlt(0);
+    if (HasGuestExceptionThunk) {
+      EmitGuestExceptionThunkCall();
+    } else {
+      hlt(0);
+    }
   }
 
   {
@@ -407,7 +424,11 @@ void Dispatcher::EmitDispatcher() {
 
     SpillStaticRegs(TMP1);
 
-    brk(0);
+    if (HasGuestExceptionThunk) {
+      EmitGuestExceptionThunkCall();
+    } else {
+      brk(0);
+    }
   }
 
   {
@@ -421,7 +442,9 @@ void Dispatcher::EmitDispatcher() {
     // brk = SIGTRAP
     // ??? = SIGSEGV
     // Force a SIGSEGV by loading zero
-    if (CTX->ExitOnHLTEnabled()) {
+    if (HasGuestExceptionThunk) {
+      EmitGuestExceptionThunkCall();
+    } else if (CTX->ExitOnHLTEnabled()) {
       ldr(ARMEmitter::XReg::x0, STATE_PTR(CpuStateFrame, ReturningStackLocation));
       add(ARMEmitter::Size::i64Bit, ARMEmitter::Reg::rsp, ARMEmitter::Reg::r0, 0);
       PopCalleeSavedRegisters();
@@ -2623,6 +2646,7 @@ void Dispatcher::InitThreadPointers(FEXCore::Core::InternalThreadState* Thread) 
     Ptrs.GuestSignal_SIGILL = GuestSignal_SIGILL;
     Ptrs.GuestSignal_SIGTRAP = GuestSignal_SIGTRAP;
     Ptrs.GuestSignal_SIGSEGV = GuestSignal_SIGSEGV;
+    Ptrs.GuestExceptionThunk = CTX->SyscallHandler->GetGuestExceptionThunk();
     Ptrs.SignalReturnHandler = SignalHandlerReturnAddress;
     Ptrs.SignalReturnHandlerRT = SignalHandlerReturnAddressRT;
     Ptrs.LUDIVHandler = LUDIVHandlerAddress;

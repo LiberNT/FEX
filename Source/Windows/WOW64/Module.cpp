@@ -75,6 +75,9 @@ static constexpr uint32_t PAUSED {1U << 1};
 
 // When this is set, the CPU context stored in the CPU area has not yet been flushed to the FEX TLS
 static constexpr uint32_t WOW_CPU_AREA_DIRTY {1U << 2};
+#ifdef __REACTOS__
+static constexpr uint32_t RAISING_GUEST_EXCEPTION {1U << 3};
+#endif
 }; // namespace ControlBits
 
 struct TLS {
@@ -445,6 +448,10 @@ __attribute__((naked)) extern "C" uint64_t SEHFrameTrampoline2Args(void* Arg0, v
       ".seh_endproc;");
 }
 
+#ifdef __REACTOS__
+static void RaiseGuestException(FEXCore::Core::CpuStateFrame* Frame);
+#endif
+
 class WowSyscallHandler : public FEXCore::HLE::SyscallHandler, public FEXCore::Allocator::FEXAllocOperators {
 public:
   WowSyscallHandler() {
@@ -519,6 +526,11 @@ public:
   void UnmarkOvercommitRange(uint64_t Start, uint64_t Length) override {
     OvercommitTracker->UnmarkRange(Start, Length);
   }
+#ifdef __REACTOS__
+  uint64_t GetGuestExceptionThunk() override {
+    return reinterpret_cast<uint64_t>(&RaiseGuestException);
+  }
+#endif
 
   FEXCore::HLE::ExecutableRangeInfo QueryGuestExecutableRange(FEXCore::Core::InternalThreadState* Thread, uint64_t Address) override {
     return InvalidationTracker->QueryExecutableRange(Address);
@@ -921,12 +933,68 @@ static uint32_t HandleDebugService(const WOW64_CONTEXT& Context) {
 #endif
 
 // Returns true if exception dispatch should be halted and the execution context restored to Ptrs->Context
+#ifdef __REACTOS__
+extern "C" NTSYSAPI void NTAPI RtlRaiseException(PEXCEPTION_RECORD ExceptionRecord);
+
+static void RaiseGuestException(FEXCore::Core::CpuStateFrame* Frame) {
+  auto TLS = GetTLS();
+  auto Thread = TLS.ThreadState();
+  auto& Fault = Frame->SynchronousFaultData;
+  WOW64_CONTEXT WowContext {
+    .ContextFlags = WOW64_CONTEXT_ALL,
+  };
+  auto* XSave = reinterpret_cast<XSAVE_FORMAT*>(WowContext.ExtendedRegisters);
+  XSave->ControlWord = 0x27f;
+  XSave->MxCsr = 0x1f80;
+  Context::StoreWowContextFromState(Thread, &WowContext);
+
+  if (Fault.FaultToTopAndGeneratedException && Fault.Signal == FEXCore::Core::FAULT_SIGSEGV &&
+      Fault.TrapNo == FEXCore::X86State::X86_TRAPNO_GP && Fault.err_code == ((0x2d << 3) | 2) &&
+      (WowContext.Eax == 1 || WowContext.Eax == 2)) {
+    Fault.FaultToTopAndGeneratedException = false;
+    WowContext.Eax = HandleDebugService(WowContext);
+    WowContext.Eip += 3;
+    Context::LoadStateFromWowContext(Thread, GetWowTEB(NtCurrentTeb()), &WowContext);
+    return;
+  }
+
+  EXCEPTION_RECORD Record {};
+  Record = FEX::Windows::HandleGuestException(Fault, Record, WowContext.Eip, WowContext.Eax, WowContext.Ecx);
+  if (Record.ExceptionCode == EXCEPTION_SINGLE_STEP) {
+    WowContext.EFlags &= ~(1 << FEXCore::X86State::RFLAG_TF_RAW_LOC);
+  }
+  BTCpuSetContext(GetCurrentThread(), GetCurrentProcess(), nullptr, &WowContext);
+  if (Record.ExceptionCode == EXCEPTION_BREAKPOINT) {
+    Record.ExceptionCode = STATUS_WX86_BREAKPOINT;
+  } else if (Record.ExceptionCode == EXCEPTION_SINGLE_STEP) {
+    Record.ExceptionCode = STATUS_WX86_SINGLE_STEP;
+  }
+  TLS.ControlWord().fetch_or(ControlBits::RAISING_GUEST_EXCEPTION, std::memory_order::relaxed);
+  RtlRaiseException(&Record);
+  TLS.ControlWord().fetch_and(~ControlBits::RAISING_GUEST_EXCEPTION, std::memory_order::relaxed);
+  Context::LockJITContext(TLS);
+}
+#endif
+
 bool BTCpuResetToConsistentStateImpl(EXCEPTION_POINTERS* Ptrs) {
   auto* Context = Ptrs->ContextRecord;
   auto* Exception = Ptrs->ExceptionRecord;
   auto TLS = GetTLS();
   auto Thread = TLS.ThreadState();
   FEXCORE_PROFILE_ACCUMULATION(Thread, AccumulatedSignalTime);
+#ifdef __REACTOS__
+  if (TLS.ControlWord().load(std::memory_order::relaxed) & ControlBits::RAISING_GUEST_EXCEPTION) {
+    TLS.ControlWord().fetch_and(~ControlBits::RAISING_GUEST_EXCEPTION, std::memory_order::relaxed);
+    if (Exception->ExceptionCode == STATUS_WX86_BREAKPOINT) {
+      Exception->ExceptionCode = EXCEPTION_BREAKPOINT;
+    } else if (Exception->ExceptionCode == STATUS_WX86_SINGLE_STEP) {
+      Exception->ExceptionCode = EXCEPTION_SINGLE_STEP;
+    }
+    Context::UnlockJITContext(TLS);
+    memcpy(Context, TLS.EntryContext(), sizeof(*Context));
+    return false;
+  }
+#endif
 
   const auto FaultAddress = Exception->NumberParameters > 1 ? static_cast<uint64_t>(Exception->ExceptionInformation[1]) : 0;
   const bool ManagedExecutableWrite = Exception->ExceptionCode == STATUS_IN_PAGE_ERROR && Exception->NumberParameters == 3 &&
