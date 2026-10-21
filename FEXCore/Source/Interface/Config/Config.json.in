@@ -438,7 +438,7 @@
       },
       "TSOEnabled": {
         "Type": "bool",
-        "Default": "true",
+        "Default": "false",
         "Desc": [
           "Controls TSO IR ops.",
           "Highly likely to break any multithreaded application if disabled."
