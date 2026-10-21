@@ -38,15 +38,14 @@ LookupCache::LookupCache(FEXCore::Context::ContextImpl* CTX)
   // Allocate a region of memory that we can use to back our block pointers
   // We need one pointer per page of virtual memory
   // At 64GB of virtual memory this will allocate 128MB of virtual memory space
-  PagePointer = reinterpret_cast<uintptr_t>(FEXCore::Allocator::VirtualAlloc(TotalCacheSize, false, false));
-  LOGMAN_THROW_A_FMT(PagePointer != -1ULL, "Failed to allocate PagePointer");
+  PagePointer = reinterpret_cast<uintptr_t>(FEXCore::Allocator::VirtualReserve(TotalCacheSize));
+  LOGMAN_THROW_A_FMT(PagePointer != -1ULL && PagePointer != 0, "Failed to allocate PagePointer");
 
   // Disable THP on the Lookup cache.
   FEXCore::Allocator::VirtualTHPControl(reinterpret_cast<const void*>(PagePointer), TotalCacheSize, FEXCore::Allocator::THPControl::Disable);
 
   FEXCore::Allocator::VirtualName("FEXMem_Lookup", reinterpret_cast<void*>(PagePointer),
                                   ctx->Config.VirtualMemSize / FEXCore::Utils::FEX_PAGE_SIZE * 8 + CODE_SIZE);
-  CTX->SyscallHandler->MarkOvercommitRange(PagePointer, TotalCacheSize);
 
   // Allocate our memory backing our pages
   // We need 32KB per guest page (One pointer per byte)
@@ -67,12 +66,19 @@ LookupCache::LookupCache(FEXCore::Context::ContextImpl* CTX)
   } else {
     // Start at maximum instead.
     L1PointerMask = MAX_L1_ENTRIES - 1;
+    CurrentL1Entries = MAX_L1_ENTRIES;
   }
+  CommitLiveRegions();
+}
+
+void LookupCache::CommitLiveRegions() {
+  const bool Committed = FEXCore::Allocator::VirtualCommit(reinterpret_cast<void*>(PagePointer), PageMemory - PagePointer) &&
+                         FEXCore::Allocator::VirtualCommit(reinterpret_cast<void*>(L1Pointer), CurrentL1Entries * sizeof(LookupCacheEntry));
+  LOGMAN_THROW_A_FMT(Committed, "Failed to commit the lookup cache");
 }
 
 LookupCache::~LookupCache() {
   FEXCore::Allocator::VirtualFree(reinterpret_cast<void*>(PagePointer), TotalCacheSize);
-  ctx->SyscallHandler->UnmarkOvercommitRange(PagePointer, TotalCacheSize);
 
   // No need to free BlockLinks map.
   // These will get freed when their memory allocators are deallocated.
@@ -81,15 +87,17 @@ LookupCache::~LookupCache() {
 void LookupCache::ClearL2Cache(const FEXCore::LookupCacheBaseLockToken& lk) {
   // Clear out the page memory
   // PagePointer and PageMemory are sequential with each other. Clear both at once.
-  FEXCore::Allocator::VirtualDontNeed(reinterpret_cast<void*>(PagePointer),
-                                      ctx->Config.VirtualMemSize / FEXCore::Utils::FEX_PAGE_SIZE * 8 + CODE_SIZE, false);
+  FEXCore::Allocator::VirtualDecommit(reinterpret_cast<void*>(PagePointer), PageMemory - PagePointer + CODE_SIZE);
   AllocateOffset = 0;
+  const bool Committed = FEXCore::Allocator::VirtualCommit(reinterpret_cast<void*>(PagePointer), PageMemory - PagePointer);
+  LOGMAN_THROW_A_FMT(Committed, "Failed to commit the lookup cache page map");
 }
 
 void LookupCache::ClearThreadLocalCaches(const LookupCacheWriteLockToken&) {
   // TODO: Preserve code cache entries?
   // Clear L1 and L2 by clearing the full cache.
-  FEXCore::Allocator::VirtualDontNeed(reinterpret_cast<void*>(PagePointer), TotalCacheSize, false);
+  FEXCore::Allocator::VirtualDecommit(reinterpret_cast<void*>(PagePointer), TotalCacheSize);
+  CommitLiveRegions();
 
   // TODO: Rename this member to avoid confusion with code caching
   CachedCodePages.clear();

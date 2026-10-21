@@ -76,6 +76,15 @@ inline void* VirtualAlloc(void* Base, size_t Size, bool Execute = false, bool Co
 inline void* VirtualAlloc(size_t Size, bool Execute = false, bool Commit = true) {
   return VirtualAlloc(nullptr, Size, Execute, Commit);
 }
+inline void* VirtualReserve(size_t Size) {
+  return ::VirtualAlloc(nullptr, Size, MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE);
+}
+inline bool VirtualCommit(void* Ptr, size_t Size) {
+  return ::VirtualAlloc(Ptr, Size, MEM_COMMIT, PAGE_READWRITE) != nullptr;
+}
+inline void VirtualDecommit(void* Ptr, size_t Size) {
+  ::VirtualFree(Ptr, Size, MEM_DECOMMIT);
+}
 
 inline void VirtualFree(void* Ptr, size_t Size) {
   if (Overcommit) {
@@ -137,6 +146,15 @@ inline void* VirtualAlloc(void* Base, size_t Size, bool Execute = false, bool Co
 
 inline void VirtualFree(void* Ptr, size_t Size) {
   FEXCore::Allocator::munmap(Ptr, Size);
+}
+inline void* VirtualReserve(size_t Size) {
+  return VirtualAlloc(Size, false, false);
+}
+inline bool VirtualCommit(void* Ptr, size_t Size) {
+  return true;
+}
+inline void VirtualDecommit(void* Ptr, size_t Size) {
+  ::madvise(Ptr, Size, MADV_DONTNEED);
 }
 inline void VirtualDontNeed(void* Ptr, size_t Size, bool Recommit = true) {
   ::madvise(reinterpret_cast<void*>(Ptr), Size, MADV_DONTNEED);

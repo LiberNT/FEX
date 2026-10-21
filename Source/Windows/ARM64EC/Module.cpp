@@ -752,13 +752,7 @@ NTSTATUS ProcessInit() {
 
   FEX::Windows::SetupEnvironmentVariableValues(NtDll);
 
-  FEX::Windows::Allocator::SetupHooks(NtDll, [](const void* Ptr, size_t Size, bool Exec, bool Mark) {
-    if (Mark) {
-      OvercommitTracker->MarkRange(reinterpret_cast<uint64_t>(Ptr), Size, Exec);
-    } else {
-      OvercommitTracker->UnmarkRange(reinterpret_cast<uint64_t>(Ptr), Size);
-    }
-  });
+  FEX::Windows::Allocator::SetupHooks(NtDll, nullptr);
   FEX::Windows::UnixLib::Init(NtDll);
 
   {

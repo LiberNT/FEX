@@ -242,6 +242,10 @@ public:
 
       if (AveragePerSecond >= DynamicL1CacheIncreaseCountHeuristic()) {
         if (CurrentL1Entries < MAX_L1_ENTRIES) {
+          const auto GrowStart = &reinterpret_cast<LookupCacheEntry*>(L1Pointer)[CurrentL1Entries];
+          if (!FEXCore::Allocator::VirtualCommit(GrowStart, CurrentL1Entries * sizeof(LookupCacheEntry))) {
+            return;
+          }
           CurrentL1Entries <<= 1;
           L1PointerMask = CurrentL1Entries - 1;
 
@@ -257,7 +261,7 @@ public:
           // Madvise the entries that we are dropping. Gives the memory back to the OS.
           LookupCacheEntry* FirstZeroL1Entry = &reinterpret_cast<LookupCacheEntry*>(L1Pointer)[CurrentL1Entries];
           size_t ZeroMemorySize = (MAX_L1_ENTRIES - CurrentL1Entries) * sizeof(LookupCacheEntry);
-          FEXCore::Allocator::VirtualDontNeed(FirstZeroL1Entry, ZeroMemorySize, false);
+          FEXCore::Allocator::VirtualDecommit(FirstZeroL1Entry, ZeroMemorySize);
 
           // Update the thread's L1 pointer mask to increase how much cache it uses.
           // Since we're in C-code, this is safe to update here.
@@ -353,6 +357,7 @@ public:
 
   void ClearCache(const LookupCacheWriteLockToken&);
   void ClearL2Cache(const LookupCacheBaseLockToken&);
+  void CommitLiveRegions();
   void ClearThreadLocalCaches(const LookupCacheWriteLockToken&);
 
   uintptr_t GetL1Pointer() const {
@@ -430,6 +435,10 @@ private:
     if (NewEnd >= CODE_SIZE) {
       // We ran out of block backing space. Need to clear the block cache and tell the JIT cores to clear their caches as well
       // Tell whatever is calling this that it needs to do it.
+      return 0;
+    }
+
+    if (!FEXCore::Allocator::VirtualCommit(reinterpret_cast<void*>(PageMemory + NewBase), SIZE_PER_PAGE)) {
       return 0;
     }
 
