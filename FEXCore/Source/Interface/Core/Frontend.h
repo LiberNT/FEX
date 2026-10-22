@@ -122,6 +122,7 @@ private:
   FEXCore::X86Tables::DecodedInst* DecodedBuffer {};
   Utils::PoolBufferWithTimedRetirement<FEXCore::X86Tables::DecodedInst*, 5000, 500> PoolObject;
   size_t DecodedSize {};
+  size_t DecodedCommitted {};
 
   uint64_t ExecutableRangeBase {};
   uint64_t ExecutableRangeEnd {};

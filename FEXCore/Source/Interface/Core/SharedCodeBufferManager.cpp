@@ -7,6 +7,8 @@
 #include <FEXCore/Utils/LogManager.h>
 #include <FEXCore/Utils/MathUtils.h>
 
+#include <algorithm>
+
 #ifndef _WIN32
 #include <FEXCore/Utils/PrctlUtils.h>
 #endif
@@ -18,7 +20,7 @@ static constexpr size_t MAX_CODE_SIZE = 1024 * 1024 * 128;
 
 CodeBuffer::CodeBuffer(size_t Size)
   : AllocatedSize(Size) {
-  Ptr = static_cast<uint8_t*>(FEXCore::Allocator::VirtualAlloc(Size, true, false));
+  Ptr = static_cast<uint8_t*>(FEXCore::Allocator::VirtualReserve(Size, true));
   LOGMAN_THROW_A_FMT(!!Ptr, "Couldn't allocate code buffer");
 
   // Protect the last page of the allocated buffer to trigger SIGSEGV on write access
@@ -72,10 +74,26 @@ fextl::shared_ptr<CodeBuffer> SharedCodeBufferManager::AllocateNew(size_t Size) 
   CodeBufferBase = Buffer->Ptr;
   CodeBufferEnd = Buffer->Ptr + Buffer->UsableSize();
   CodeBufferOffset = CodeBufferBase;
+  CodeBufferCommitted.store(CodeBufferBase, std::memory_order_release);
 
   OnCodeBufferAllocated(Buffer);
 
   return Buffer;
+}
+
+void SharedCodeBufferManager::CommitCodeBuffer(uint8_t* End) {
+  static constexpr size_t CommitGranule = 1024 * 1024;
+  auto Committed = CodeBufferCommitted.load(std::memory_order_acquire);
+  if (End <= Committed) {
+    return;
+  }
+  auto NewCommitted = std::min(reinterpret_cast<uint8_t*>(AlignUp(reinterpret_cast<uintptr_t>(End), CommitGranule)), CodeBufferEnd);
+  const bool Result = FEXCore::Allocator::VirtualCommit(Committed, NewCommitted - Committed, true);
+  LOGMAN_THROW_A_FMT(Result, "Failed to commit the code buffer");
+
+  while (Committed < NewCommitted &&
+         !CodeBufferCommitted.compare_exchange_weak(Committed, NewCommitted, std::memory_order_release, std::memory_order_acquire)) {
+  }
 }
 
 fextl::shared_ptr<CodeBuffer> SharedCodeBufferManager::GetLatest() {

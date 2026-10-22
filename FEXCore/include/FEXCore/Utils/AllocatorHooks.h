@@ -50,12 +50,7 @@ FEX_DEFAULT_VISIBILITY void ClearHooks();
 #ifdef _WIN32
 FEX_DEFAULT_VISIBILITY extern OvercommitPtr Overcommit;
 
-inline void* VirtualAlloc(void* Base, size_t Size, bool Execute = false, bool Commit = true) {
-  if (!Commit && !Overcommit) {
-    Commit = true;
-  }
-  // Allocate top-down to avoid polluting the lower VA space, as even on 64-bit some programs (i.e. LuaJIT) require allocations below 4GB.
-  DWORD Flags = (Commit ? MEM_COMMIT : 0) | MEM_RESERVE | MEM_TOP_DOWN;
+inline void* VirtualAllocWithFlags(void* Base, size_t Size, bool Execute, DWORD Flags) {
 #ifdef ARCHITECTURE_arm64ec
   MEM_EXTENDED_PARAMETER Parameter {};
   if (Execute) {
@@ -67,6 +62,16 @@ inline void* VirtualAlloc(void* Base, size_t Size, bool Execute = false, bool Co
 #else
   void* Result = ::VirtualAlloc(Base, Size, Flags, Execute ? PAGE_EXECUTE_READWRITE : PAGE_READWRITE);
 #endif
+  return Result;
+}
+
+inline void* VirtualAlloc(void* Base, size_t Size, bool Execute = false, bool Commit = true) {
+  if (!Commit && !Overcommit) {
+    Commit = true;
+  }
+  // Allocate top-down to avoid polluting the lower VA space, as even on 64-bit some programs (i.e. LuaJIT) require allocations below 4GB.
+  DWORD Flags = (Commit ? MEM_COMMIT : 0) | MEM_RESERVE | MEM_TOP_DOWN;
+  void* Result = VirtualAllocWithFlags(Base, Size, Execute, Flags);
   if (Result && !Commit) {
     Overcommit(Result, Size, Execute, true);
   }
@@ -76,11 +81,11 @@ inline void* VirtualAlloc(void* Base, size_t Size, bool Execute = false, bool Co
 inline void* VirtualAlloc(size_t Size, bool Execute = false, bool Commit = true) {
   return VirtualAlloc(nullptr, Size, Execute, Commit);
 }
-inline void* VirtualReserve(size_t Size) {
-  return ::VirtualAlloc(nullptr, Size, MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE);
+inline void* VirtualReserve(size_t Size, bool Execute = false) {
+  return VirtualAllocWithFlags(nullptr, Size, Execute, MEM_RESERVE | MEM_TOP_DOWN);
 }
-inline bool VirtualCommit(void* Ptr, size_t Size) {
-  return ::VirtualAlloc(Ptr, Size, MEM_COMMIT, PAGE_READWRITE) != nullptr;
+inline bool VirtualCommit(void* Ptr, size_t Size, bool Execute = false) {
+  return ::VirtualAlloc(Ptr, Size, MEM_COMMIT, Execute ? PAGE_EXECUTE_READWRITE : PAGE_READWRITE) != nullptr;
 }
 inline void VirtualDecommit(void* Ptr, size_t Size) {
   ::VirtualFree(Ptr, Size, MEM_DECOMMIT);
@@ -147,10 +152,10 @@ inline void* VirtualAlloc(void* Base, size_t Size, bool Execute = false, bool Co
 inline void VirtualFree(void* Ptr, size_t Size) {
   FEXCore::Allocator::munmap(Ptr, Size);
 }
-inline void* VirtualReserve(size_t Size) {
-  return VirtualAlloc(Size, false, false);
+inline void* VirtualReserve(size_t Size, bool Execute = false) {
+  return VirtualAlloc(Size, Execute, false);
 }
-inline bool VirtualCommit(void* Ptr, size_t Size) {
+inline bool VirtualCommit(void* Ptr, size_t Size, bool Execute = false) {
   return true;
 }
 inline void VirtualDecommit(void* Ptr, size_t Size) {

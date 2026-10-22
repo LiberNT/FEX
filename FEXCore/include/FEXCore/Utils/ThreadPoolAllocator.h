@@ -385,7 +385,7 @@ public:
 
 private:
   void* Alloc(size_t Size) override {
-    auto Result = FEXCore::Allocator::VirtualAlloc(Size, false, false);
+    auto Result = FEXCore::Allocator::VirtualReserve(Size);
     if (Name) {
       FEXCore::Allocator::VirtualName(Name, Result, Size);
     }
@@ -495,6 +495,7 @@ public:
   struct AllocationInfo {
     Type Ptr;
     size_t Size;
+    bool Claimed;
   };
 
   /**
@@ -520,6 +521,7 @@ public:
 
     // Claim a new buffer if needed
     Size = NewSize.value_or(Size);
+    const bool Claimed = !Buffer;
     if (!Buffer) {
       Buffer = ThreadAllocator.ClaimBuffer(Size, &ClientOwnedFlag);
     }
@@ -533,6 +535,7 @@ public:
     return {
       .Ptr = reinterpret_cast<Type>((*Info)->Ptr),
       .Size = (*Info)->Size,
+      .Claimed = Claimed,
     };
   }
 

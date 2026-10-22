@@ -18,7 +18,9 @@ $end_info$
 #include <FEXCore/Core/X86Enums.h>
 #include <FEXCore/HLE/SyscallHandler.h>
 #include <FEXCore/Utils/Allocator.h>
+#include <FEXCore/Utils/AllocatorHooks.h>
 #include <FEXCore/Utils/LogManager.h>
+#include <FEXCore/Utils/MathUtils.h>
 #include <FEXCore/Utils/Profiler.h>
 #include <FEXCore/Utils/Telemetry.h>
 #include <FEXCore/Utils/TypeDefines.h>
@@ -853,6 +855,15 @@ Decoder::DecodedBlockStatus Decoder::DecodeInstructionImpl(uint64_t PC) {
   LastEscapePrefix = 0;
   Instruction.fill(0);
 
+  const size_t DecodedEnd = (DecodedSize + 1) * sizeof(DecodedInst);
+  if (DecodedEnd > DecodedCommitted) {
+    const size_t NewCommitted = std::min(FEXCore::AlignUp(DecodedEnd, 64 * 1024), sizeof(DecodedInst) * DefaultDecodedBufferSize);
+    const bool Committed = FEXCore::Allocator::VirtualCommit(reinterpret_cast<uint8_t*>(DecodedBuffer) + DecodedCommitted,
+                                                             NewCommitted - DecodedCommitted);
+    LOGMAN_THROW_A_FMT(Committed, "Failed to commit the decoded instruction buffer");
+    DecodedCommitted = NewCommitted;
+  }
+
   DecodeInst = &DecodedBuffer[DecodedSize];
   memset(DecodeInst, 0, sizeof(DecodedInst));
   DecodeInst->PC = PC;
@@ -1388,7 +1399,11 @@ void Decoder::DecodeInstructionsAtEntry(FEXCore::Core::InternalThreadState* Thre
   DecodedSize = 0;
   MaxCondBranchForward = 0;
   MaxCondBranchBackwards = ~0ULL;
-  DecodedBuffer = PoolObject.ReownOrClaimBuffer();
+  auto Buffer = PoolObject.ReownOrClaimBufferWithSize();
+  DecodedBuffer = Buffer.Ptr;
+  if (Buffer.Claimed) {
+    DecodedCommitted = 0;
+  }
 
   // Decode operating mode from thread's CS segment.
   const auto CSSegment = Core::CPUState::GetSegmentFromIndex(Thread->CurrentFrame->State, Thread->CurrentFrame->State.cs_idx);

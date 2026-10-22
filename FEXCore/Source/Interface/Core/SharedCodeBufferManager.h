@@ -67,6 +67,7 @@ public:
   uint8_t* CodeBufferBase {};
   uint8_t* CodeBufferEnd {};
   std::atomic<uint8_t*> CodeBufferOffset {};
+  std::atomic<uint8_t*> CodeBufferCommitted {};
 
   // Atomically allocate a fixed size buffer out of the current allocated codebuffer.
   // Lockless because it's just a linear allocator.
@@ -96,6 +97,10 @@ public:
       }
     }
 
+    if (DesiredOffset > CodeBufferCommitted.load(std::memory_order_acquire)) {
+      CommitCodeBuffer(DesiredOffset);
+    }
+
     // Managed to fit.
     return {
       .BufferBase = CodeBufferBase,
@@ -111,6 +116,8 @@ public:
 
 private:
   fextl::shared_ptr<CodeBuffer> Latest;
+
+  void CommitCodeBuffer(uint8_t* End);
 
   fextl::shared_ptr<CodeBuffer> AllocateNew(size_t Size);
 };

@@ -4,9 +4,12 @@
 #include "Interface/IR/IR.h"
 
 #include <FEXCore/Utils/Allocator.h>
+#include <FEXCore/Utils/AllocatorHooks.h>
 #include <FEXCore/Utils/LogManager.h>
+#include <FEXCore/Utils/MathUtils.h>
 #include <FEXCore/Utils/ThreadPoolAllocator.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -38,6 +41,9 @@ public:
   void* DataAllocate(size_t Size) {
     LOGMAN_THROW_A_FMT(DataCheckSize(Size), "Ran out of space in DualIntrusiveAllocator during allocation");
     size_t NewOffset = DataCurrentOffset + Size;
+    if (NewOffset > DataCommitted) {
+      CommitRange(Data, DataCommitted, NewOffset);
+    }
     uintptr_t NewPointer = Data + DataCurrentOffset;
     DataCurrentOffset = NewOffset;
     return reinterpret_cast<void*>(NewPointer);
@@ -47,6 +53,9 @@ public:
   void* ListAllocate(size_t Size) {
     LOGMAN_THROW_A_FMT(ListCheckSize(Size), "Ran out of space in DualIntrusiveAllocator during allocation");
     size_t NewOffset = ListCurrentOffset + Size;
+    if (NewOffset > ListCommitted) {
+      CommitRange(List, ListCommitted, NewOffset);
+    }
     uintptr_t NewPointer = List + ListCurrentOffset;
     ListCurrentOffset = NewOffset;
     return reinterpret_cast<void*>(NewPointer);
@@ -85,6 +94,12 @@ public:
   }
 
   void CopyData(const DualIntrusiveAllocator& rhs) {
+    if (rhs.DataCurrentOffset > DataCommitted) {
+      CommitRange(Data, DataCommitted, rhs.DataCurrentOffset);
+    }
+    if (rhs.ListCurrentOffset > ListCommitted) {
+      CommitRange(List, ListCommitted, rhs.ListCurrentOffset);
+    }
     DataCurrentOffset = rhs.DataCurrentOffset;
     ListCurrentOffset = rhs.ListCurrentOffset;
     memcpy(reinterpret_cast<void*>(Data), reinterpret_cast<void*>(rhs.Data), DataCurrentOffset);
@@ -95,10 +110,21 @@ protected:
   DualIntrusiveAllocator(size_t Size)
     : MemorySize {Size} {}
 
+  void CommitRange(uintptr_t Base, size_t& Committed, size_t End) {
+    const size_t NewCommitted = std::min(FEXCore::AlignUp(End, CommitGranule), MemorySize);
+    const bool Result = FEXCore::Allocator::VirtualCommit(reinterpret_cast<void*>(Base + Committed), NewCommitted - Committed);
+    LOGMAN_THROW_A_FMT(Result, "Failed to commit DualIntrusiveAllocator memory");
+    Committed = NewCommitted;
+  }
+
+  static constexpr size_t CommitGranule = 64 * 1024;
+
   uintptr_t Data {};
   uintptr_t List {};
   size_t DataCurrentOffset {0};
   size_t ListCurrentOffset {0};
+  size_t DataCommitted {0};
+  size_t ListCommitted {0};
   size_t MemorySize {};
 };
 
@@ -108,6 +134,8 @@ public:
     : DualIntrusiveAllocator {Size} {
     Data = reinterpret_cast<uintptr_t>(FEXCore::Allocator::malloc(Size * 2));
     List = reinterpret_cast<uintptr_t>(Data + Size);
+    DataCommitted = Size;
+    ListCommitted = Size;
   }
 
   ~DualIntrusiveAllocatorMalloc() {
@@ -121,8 +149,13 @@ public:
     : DualIntrusiveAllocator {Size}
     , PoolObject {ThreadAllocator, Size * 2} {}
   void ReownOrClaimBuffer() {
-    Data = PoolObject.ReownOrClaimBuffer();
+    auto Buffer = PoolObject.ReownOrClaimBufferWithSize();
+    Data = Buffer.Ptr;
     List = Data + MemorySize;
+    if (Buffer.Claimed) {
+      DataCommitted = 0;
+      ListCommitted = 0;
+    }
   }
 
   void DelayedDisownBuffer() {
